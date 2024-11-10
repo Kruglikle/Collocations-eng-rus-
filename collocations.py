@@ -1,98 +1,109 @@
-from telegram import Bot 
+from telegram import Bot
 from telegram.ext import Updater, CommandHandler, CallbackContext
 from datetime import time
 import random
+import pandas as pd
+from pytz import timezone
+import datetime
 
-# Ваш токен, который вы получили от BotFather
+# Чтение данных из Excel
+df = pd.read_excel("C:\\Users\\PC\\Desktop\\Collocations_DB (1).xlsx")
+
+# Преобразование данных из Excel в словарь
+collocations = {}
+for index, row in df.iterrows():
+    topic = row['topic']
+    phrase = row['phrase']
+    
+    if topic not in collocations:
+        collocations[topic] = []
+    
+    collocations[topic].append(phrase)
+
+# Токен
 TOKEN = '8043514095:AAHktuhNYjI-aLTMyfaVZEudC2jJBy6OoFM'
 
-# Словарь с темами и коллокациями
-collocations = {
-    "nature": [
-        "breathtaking scenery - захватывающий дух пейзаж",
-        "lush greenery - пышная зелень",
-        "dense forest - густой лес",
-        "majestic mountains - величественные горы",
-        "crystal-clear water - кристально чистая вода"
-    ],
-    "weather": [
-        "heavy rain - сильный дождь",
-        "clear sky - ясное небо",
-        "strong winds - сильный ветер",
-        "thick fog - густой туман",
-        "scorching heat - жгучая жара"
-    ]
-}
-
-# Хранилище для выбранных пользователем тем и уже отправленных коллокаций
+# Хранилище для выбранных пользователем тем и отправленных коллокаций
 user_data = {}
 
-# Функция для отправки сообщения
-def send_daily_message(context: CallbackContext):
-    chat_id = context.job.context
-    topic = user_data.get(chat_id, {}).get("topic", "nature")  # Тема по умолчанию — "природа"
-    
-    sent_collocations = user_data.get(chat_id, {}).get("sent", [])
-    available_collocations = [c for c in collocations[topic] if c not in sent_collocations]
+# Московский часовой пояс
+moscow_timezone = timezone('Europe/Moscow')
 
-    if available_collocations:
-        message = random.choice(available_collocations)
-        context.bot.send_message(chat_id=chat_id, text=message)
-
-        # Обновляем список уже отправленных коллокаций
-        user_data[chat_id]["sent"].append(message)
-    else:
-        context.bot.send_message(chat_id=chat_id, text="No more collocations available for today.")
-
-# Функция /start для приветствия пользователя
+#приветствие
 def start(update, context):
     update.message.reply_text(
-        "Hi! Choose a topic by typing /set_topic_nature or /set_topic_weather. "
-        "I will send you a collocation for the chosen topic!"
+        "Привет! Я бот, который помогает в изучении устойчивых сочетаний английского языка. "
+        "Используйте /send_collocation для получения случайной коллокации или /set_daily_message для её ежедневной отправки."
     )
 
-# Функция для установки темы и отправки коллокации сразу после выбора
-def set_topic_nature(update, context):
+# Функция для установки темы
+def set_topic(update, context):
     chat_id = update.message.chat_id
-    user_data[chat_id] = {"topic": "nature", "sent": []}
-    update.message.reply_text("You have selected the topic: nature")
+    topic = update.message.text.split('_')[-1].replace('and', '_').replace(' ', '_')  # Получаем тему из команды
+
+    if topic not in collocations:
+        update.message.reply_text("This topic does not exist. Please choose another one.")
+        return
+
+    user_data[chat_id] = {"topic": topic, "sent": []}
+    update.message.reply_text(f"You have selected the topic: {topic}")
 
     # Отправляем случайную коллокацию сразу после выбора темы
-    message = random.choice(collocations["nature"])
+    message = random.choice(collocations[topic])
     user_data[chat_id]["sent"].append(message)  # Обновляем список отправленных коллокаций
     update.message.reply_text(f"Here is your collocation: {message}")
 
-def set_topic_weather(update, context):
+#рандомная коллокация
+def send_collocation_command(update, context):
     chat_id = update.message.chat_id
-    user_data[chat_id] = {"topic": "weather", "sent": []}
-    update.message.reply_text("You have selected the topic: weather")
+    # Выбор случайной коллокации из всего DataFrame
+    random_collocation = df.sample(1)['phrase'].values[0]  # Выбираем случайное значение из столбца 'phrase'
+    context.bot.send_message(chat_id=chat_id, text=random_collocation)
 
-    # Отправляем случайную коллокацию сразу после выбора темы
-    message = random.choice(collocations["weather"])
-    user_data[chat_id]["sent"].append(message)  # Обновляем список отправленных коллокаций
-    update.message.reply_text(f"Here is your collocation: {message}")
+# Функция для автоматической отправки коллокации
+def send_daily_message(context: CallbackContext):
+    chat_id = context.job.context
+    topic = user_data.get(chat_id, {}).get("topic")
+    last_sent = user_data.get(chat_id, {}).get("last_sent")
 
-# Функция для установки ежедневных сообщений
+    if topic and (not last_sent or last_sent.date() < datetime.datetime.now(moscow_timezone).date()):
+        send_collocation(chat_id, topic, context)
+
+# Команда для установки автоматической отправки сообщений в 8:00
 def set_daily_message(update, context):
     chat_id = update.message.chat_id
-    context.job_queue.run_daily(send_daily_message, time=time(9, 0), context=chat_id)
-    update.message.reply_text("Daily messages have been set!")
+    context.job_queue.run_daily(send_daily_message, time=time(5, 30), context=chat_id, timezone=moscow_timezone)
+    update.message.reply_text("Daily messages have been set for 16:30 Moscow time!")
 
 # Основная функция для запуска бота
 def main():
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
 
-    # Команды /start, /set_topic_nature и /set_topic_weather
+    # Обработчики команд
     dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("set_topic_nature", set_topic_nature))
-    dp.add_handler(CommandHandler("set_topic_weather", set_topic_weather))
+    dp.add_handler(CommandHandler("set_topic_nature", set_topic))
+    dp.add_handler(CommandHandler("set_topic_weather", set_topic))
+    dp.add_handler(CommandHandler("set_topic_emotions", set_topic))
+    dp.add_handler(CommandHandler("set_topic_health", set_topic))
+    dp.add_handler(CommandHandler("set_topic_economics", set_topic))
+    dp.add_handler(CommandHandler("set_topic_education", set_topic))
+    dp.add_handler(CommandHandler("set_topic_art", set_topic))
+    dp.add_handler(CommandHandler("set_topic_sport", set_topic))
+    dp.add_handler(CommandHandler("set_topic_technologies", set_topic))
+    dp.add_handler(CommandHandler("set_topic_politics", set_topic))
+    dp.add_handler(CommandHandler("set_topic_dialogue", set_topic))
+    dp.add_handler(CommandHandler("set_topic_time", set_topic))
+    dp.add_handler(CommandHandler("set_topic_law", set_topic))
+    dp.add_handler(CommandHandler("set_topic_fashion", set_topic))
+    dp.add_handler(CommandHandler("set_topic_shopping", set_topic))
+    dp.add_handler(CommandHandler("set_topic_characteristics", set_topic))
+    dp.add_handler(CommandHandler("set_topic_news", set_topic))
+    dp.add_handler(CommandHandler("set_topic_idioms", set_topic))
+    dp.add_handler(CommandHandler("send_collocation", send_collocation_command))
     dp.add_handler(CommandHandler("set_daily_message", set_daily_message))
 
-    # Запуск бота
     updater.start_polling()
-
-    # Ожидание завершения
     updater.idle()
 
 if __name__ == '__main__':
