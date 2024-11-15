@@ -1,0 +1,42 @@
+# Python bytecode files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment folders
+venv/
+env/
+ENV/
+.venv/
+
+# Distribution / packaging
+*.egg
+*.egg-info
+dist/
+build/
+*.tar.gz
+*.whl
+
+# IDE or editor folders
+.vscode/
+.idea/
+*.swp
+
+# dotenv file (if you want to ignore the .env file for security reasons)
+.env
+
+# Test and coverage
+.coverage
+nosetests.xml
+coverage.xml
+*.cover
+*.hypothesis/
+
+# PyInstaller
+#  Typically used to bundle the project into a single executable.
+*.spec
+
+# mypy
+.mypy_cache/
+.dmypy.json

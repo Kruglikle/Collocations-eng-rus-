@@ -1,13 +1,19 @@
 from telegram import Bot
-from telegram.ext import Updater, CommandHandler, CallbackContext
+from telegram.ext import Updater, CommandHandler, CallbackContext, Application
 from datetime import time
 import random
 import pandas as pd
 from pytz import timezone
 import datetime
 
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+TOKEN = os.getenv('BOT_TOKEN')
+
 # Чтение данных из Excel
-df = pd.read_excel("C:\\Users\\PC\\Desktop\\Collocations_DB (1).xlsx")
+df = pd.read_excel("./Collocations_DB.xlsx")
 
 # Преобразование данных из Excel в словарь
 collocations = {}
@@ -20,9 +26,6 @@ for index, row in df.iterrows():
     
     collocations[topic].append(phrase)
 
-# Токен
-TOKEN = '8043514095:AAHktuhNYjI-aLTMyfaVZEudC2jJBy6OoFM'
-
 # Хранилище для выбранных пользователем тем и отправленных коллокаций
 user_data = {}
 
@@ -30,35 +33,35 @@ user_data = {}
 moscow_timezone = timezone('Europe/Moscow')
 
 #приветствие
-def start(update, context):
-    update.message.reply_text(
+async def start(update, context):
+    await update.message.reply_text(
         "Привет! Я бот, который помогает в изучении устойчивых сочетаний английского языка. "
         "Используйте /send_collocation для получения случайной коллокации или /set_daily_message для её ежедневной отправки."
     )
 
 # Функция для установки темы
-def set_topic(update, context):
+async def set_topic(update, context):
     chat_id = update.message.chat_id
     topic = update.message.text.split('_')[-1].replace('and', '_').replace(' ', '_')  # Получаем тему из команды
 
     if topic not in collocations:
-        update.message.reply_text("This topic does not exist. Please choose another one.")
+        await update.message.reply_text("This topic does not exist. Please choose another one.")
         return
 
     user_data[chat_id] = {"topic": topic, "sent": []}
-    update.message.reply_text(f"You have selected the topic: {topic}")
+    await update.message.reply_text(f"You have selected the topic: {topic}")
 
     # Отправляем случайную коллокацию сразу после выбора темы
     message = random.choice(collocations[topic])
     user_data[chat_id]["sent"].append(message)  # Обновляем список отправленных коллокаций
-    update.message.reply_text(f"Here is your collocation: {message}")
+    await update.message.reply_text(f"Here is your collocation: {message}")
 
 #рандомная коллокация
-def send_collocation_command(update, context):
+async def send_collocation_command(update, context):
     chat_id = update.message.chat_id
     # Выбор случайной коллокации из всего DataFrame
     random_collocation = df.sample(1)['phrase'].values[0]  # Выбираем случайное значение из столбца 'phrase'
-    context.bot.send_message(chat_id=chat_id, text=random_collocation)
+    await context.bot.send_message(chat_id=chat_id, text=random_collocation)
 
 # Функция для автоматической отправки коллокации
 def send_daily_message(context: CallbackContext):
@@ -70,15 +73,14 @@ def send_daily_message(context: CallbackContext):
         send_collocation(chat_id, topic, context)
 
 # Команда для установки автоматической отправки сообщений в 8:00
-def set_daily_message(update, context):
+async def set_daily_message(update, context):
     chat_id = update.message.chat_id
     context.job_queue.run_daily(send_daily_message, time=time(5, 30), context=chat_id, timezone=moscow_timezone)
-    update.message.reply_text("Daily messages have been set for 16:30 Moscow time!")
+    await update.message.reply_text("Daily messages have been set for 16:30 Moscow time!")
 
 # Основная функция для запуска бота
 def main():
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
+    dp = Application.builder().token(TOKEN).build()
 
     # Обработчики команд
     dp.add_handler(CommandHandler("start", start))
@@ -101,10 +103,9 @@ def main():
     dp.add_handler(CommandHandler("set_topic_news", set_topic))
     dp.add_handler(CommandHandler("set_topic_idioms", set_topic))
     dp.add_handler(CommandHandler("send_collocation", send_collocation_command))
-    dp.add_handler(CommandHandler("set_daily_message", set_daily_message))
+    # dp.add_handler(CommandHandler("set_daily_message", set_daily_message))
 
-    updater.start_polling()
-    updater.idle()
+    dp.run_polling()
 
 if __name__ == '__main__':
     main()
