@@ -40,3 +40,5 @@ coverage.xml
 # mypy
 .mypy_cache/
 .dmypy.json
+
+modular-design-439114-d1-f97173153813.json

@@ -2,22 +2,31 @@ from telegram import Bot
 from telegram.ext import Updater, CommandHandler, CallbackContext, Application
 from datetime import time
 import random
-import pandas as pd
 from pytz import timezone
 import datetime
-
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
 TOKEN = os.getenv('BOT_TOKEN')
 
-# Чтение данных из Excel
-df = pd.read_excel("./Collocations_DB.xlsx")
+# Настройка доступа к Google Sheets
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+creds = ServiceAccountCredentials.from_json_keyfile_name("modular-design-439114-d1-f97173153813.json", scope)
+client = gspread.authorize(creds)
 
-# Преобразование данных из Excel в словарь
+# Открытие таблицы по имени (поменяйте на имя вашей таблицы)
+spreadsheet = client.open("collocations_database")  # Имя вашей таблицы
+worksheet = spreadsheet.sheet1  # Берём первый лист
+
+# Чтение данных из Google Sheets
+data = worksheet.get_all_records()
+
+# Преобразование данных в словарь (то же самое, что было для Excel)
 collocations = {}
-for index, row in df.iterrows():
+for row in data:
     topic = row['topic']
     phrase = row['phrase']
     
@@ -32,13 +41,10 @@ user_data = {}
 # Московский часовой пояс
 moscow_timezone = timezone('Europe/Moscow')
 
-#приветствие
 async def start(update, context):
     await update.message.reply_text(
-        "Привет! Я бот, который помогает в изучении устойчивых сочетаний английского языка. "
-        "Используйте /send_collocation для получения случайной коллокации или /set_daily_message для её ежедневной отправки."
+        "Привет! Я бот, который помогает в изучении устойчивых сочетаний английского языка, определении ложных друзей переводчика и запоминании идиом. "    
     )
-
 # Функция для установки темы
 async def set_topic(update, context):
     chat_id = update.message.chat_id
@@ -56,11 +62,11 @@ async def set_topic(update, context):
     user_data[chat_id]["sent"].append(message)  # Обновляем список отправленных коллокаций
     await update.message.reply_text(f"Here is your collocation: {message}")
 
-#рандомная коллокация
+# Рандомная коллокация
 async def send_collocation_command(update, context):
     chat_id = update.message.chat_id
     # Выбор случайной коллокации из всего DataFrame
-    random_collocation = df.sample(1)['phrase'].values[0]  # Выбираем случайное значение из столбца 'phrase'
+    random_collocation = random.choice([row['phrase'] for row in data])  # Случайная фраза из данных
     await context.bot.send_message(chat_id=chat_id, text=random_collocation)
 
 # Функция для автоматической отправки коллокации
