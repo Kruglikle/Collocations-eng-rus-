@@ -1,0 +1,13 @@
+version: "3.8"
+
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: collocations-bot
+    restart: unless-stopped
+    volumes:
+      - ./modular-design-439114-d1-f97173153813.json:/app/modular-design-439114-d1-f97173153813.json
+    env_file:
+      - .env
